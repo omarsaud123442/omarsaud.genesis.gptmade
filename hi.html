@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Genesis Emulator</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; background: #111; color: #fff; }
+    canvas { border: 2px solid #fff; margin-top: 20px; }
+    button, input { margin: 5px; padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    #progress { margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+<h1>Genesis Emulator</h1>
+
+<input type="file" id="romInput" accept=".bin,.gen,.md"/>
+<br>
+<button id="loadButton">Load ROM</button>
+<button id="startButton" disabled>Start Emulator</button>
+<button id="toggleAudio" disabled>Toggle Audio</button>
+<div id="progress">Load Progress: 0%</div>
+<canvas id="screen" width="320" height="224"></canvas>
+<br>
+<button id="tilt-left">Tilt Cartridge Left</button>
+<button id="tilt-right">Tilt Cartridge Right</button>
+
+<script src="https://cdn.jsdelivr.net/gh/joeisbad/jsGenesis/js/genesis.js"></script>
+<script>
+  const canvas = document.getElementById('screen');
+  const ctx = canvas.getContext('2d');
+  const emulator = new jsGenesis.Emulator(canvas);
+  let audioEnabled = true;
+  let romFile = null;
+  let romLoaded = false;
+
+  // Rolling balls animation variables
+  const balls = [
+    {x: 40, y: 112, radius: 8, offset: 0},
+    {x: 80, y: 112, radius: 8, offset: 0.2},
+    {x: 120, y: 112, radius: 8, offset: 0.4},
+    {x: 160, y: 112, radius: 8, offset: 0.6},
+    {x: 200, y: 112, radius: 8, offset: 0.8}
+  ];
+  let animStart = null;
+  let animating = true;
+
+  function drawAnimation(timestamp) {
+    if (!animStart) animStart = timestamp;
+    const t = (timestamp - animStart) / 500; // speed
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    balls.forEach(b => {
+      const scale = Math.abs(Math.sin((t + b.offset) * Math.PI));
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.radius * scale, 0, Math.PI * 2);
+      ctx.fillStyle = '#0a84ff';
+      ctx.fill();
+    });
+    if (animating) requestAnimationFrame(drawAnimation);
+  }
+
+  // Start the animation immediately
+  requestAnimationFrame(drawAnimation);
+
+  // UI elements
+  const romInput = document.getElementById('romInput');
+  const loadButton = document.getElementById('loadButton');
+  const startButton = document.getElementById('startButton');
+  const toggleAudioButton = document.getElementById('toggleAudio');
+  const progressDiv = document.getElementById('progress');
+
+  // Select ROM
+  romInput.addEventListener('change', (event) => {
+    romFile = event.target.files[0];
+    if (romFile) progressDiv.textContent = `ROM Selected: ${romFile.name}`;
+    else progressDiv.textContent = `No ROM selected.`;
+  });
+
+  // Load ROM
+  loadButton.addEventListener('click', async () => {
+    if (!romFile) {
+      alert('Please select a ROM file first!');
+      return;
+    }
+    progressDiv.textContent = `Loading ROM: ${romFile.name}...`;
+    try {
+      const reader = new FileReader();
+      reader.onload = () => {
+        emulator.loadROM(reader.result);
+        romLoaded = true;
+        startButton.disabled = false;
+        toggleAudioButton.disabled = false;
+        progressDiv.textContent = `ROM Loaded: ${romFile.name} - Press Start`;
+      };
+      reader.readAsArrayBuffer(romFile);
+    } catch (err) {
+      progressDiv.textContent = `Error loading ROM: ${err}`;
+      console.error(err);
+    }
+  });
+
+  // Start Emulator
+  startButton.addEventListener('click', () => {
+    if (!romLoaded) return;
+    animating = false; // stop rolling balls
+    emulator.start();
+    progressDiv.textContent = '';
+  });
+
+  // Toggle audio
+  toggleAudioButton.addEventListener('click', () => {
+    audioEnabled = !audioEnabled;
+    emulator.setAudioEnabled(audioEnabled);
+    toggleAudioButton.textContent = audioEnabled ? 'Audio ON' : 'Audio OFF';
+  });
+
+  // Tilt cartridge
+  const tiltAmount = 5;
+  document.getElementById('tilt-left').addEventListener('click', () => {
+    canvas.style.transform = `rotateZ(-${tiltAmount}deg)`;
+    setTimeout(() => canvas.style.transform = 'rotateZ(0deg)', 200);
+  });
+  document.getElementById('tilt-right').addEventListener('click', () => {
+    canvas.style.transform = `rotateZ(${tiltAmount}deg)`;
+    setTimeout(() => canvas.style.transform = 'rotateZ(0deg)', 200);
+  });
+
+  // Keyboard controls
+  const keyMap = {
+    ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT',
+    KeyZ: 'A', KeyX: 'B', KeyC: 'C', Enter: 'START'
+  };
+
+  window.addEventListener('keydown', e => {
+    if (keyMap[e.code]) emulator.setButton(1, keyMap[e.code], true);
+  });
+  window.addEventListener('keyup', e => {
+    if (keyMap[e.code]) emulator.setButton(1, keyMap[e.code], false);
+  });
+</script>
+</body>
+</html>
